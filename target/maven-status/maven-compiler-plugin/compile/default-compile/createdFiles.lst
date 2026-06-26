@@ -1,5 +1,8 @@
 com\zerobug\lambda\context\CodeChunkingService.class
 com\zerobug\lambda\context\DocumentChunk$DocumentChunkBuilder.class
-com\zerobug\lambda\context\DocumentChunk.class
-com\zerobug\lambda\context\RagContextLambda.class
 com\zerobug\lambda\invoke\BedrockInvokeLambda.class
+com\zerobug\lambda\tree\FileTreeLambda.class
+com\zerobug\lambda\context\DocumentChunk.class
+com\zerobug\lambda\importing\ProjectImportLambda.class
+com\zerobug\lambda\context\RagContextLambda.class
+com\zerobug\lambda\result\ResultAndHistoryLambda.class

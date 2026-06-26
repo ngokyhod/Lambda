@@ -41,6 +41,18 @@
     <artifactId>javaparser-core</artifactId>
     <version>3.25.8</version>
 </dependency>
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>s3</artifactId>
+    <version>2.25.27</version> 
+</dependency>
+
+<!-- Thư viện JGit để xử lý việc Clone code từ GitHub/GitLab -->
+<dependency>
+    <groupId>org.eclipse.jgit</groupId>
+    <artifactId>org.eclipse.jgit</artifactId>
+    <version>6.8.0.202311291450-r</version>
+</dependency>
     </dependencies>
 
     <build>
