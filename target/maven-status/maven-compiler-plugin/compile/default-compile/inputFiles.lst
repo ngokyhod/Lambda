@@ -2,6 +2,6 @@ D:\Doancs(important)\2025-05-24\AWS\lambda\src\main\java\com\zerobug\lambda\cont
 D:\Doancs(important)\2025-05-24\AWS\lambda\src\main\java\com\zerobug\lambda\context\DocumentChunk.java
 D:\Doancs(important)\2025-05-24\AWS\lambda\src\main\java\com\zerobug\lambda\context\RagContextLambda.java
 D:\Doancs(important)\2025-05-24\AWS\lambda\src\main\java\com\zerobug\lambda\importing\ProjectImportLambda.java
-D:\Doancs(important)\2025-05-24\AWS\lambda\src\main\java\com\zerobug\lambda\invoke\BedrockInvokeLambda.java
+D:\Doancs(important)\2025-05-24\AWS\lambda\src\main\java\com\zerobug\lambda\invoke\ApiInvokeLambda.java
 D:\Doancs(important)\2025-05-24\AWS\lambda\src\main\java\com\zerobug\lambda\result\ResultAndHistoryLambda.java
 D:\Doancs(important)\2025-05-24\AWS\lambda\src\main\java\com\zerobug\lambda\tree\FileTreeLambda.java
