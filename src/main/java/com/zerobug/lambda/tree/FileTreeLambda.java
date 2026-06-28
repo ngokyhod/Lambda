@@ -16,10 +16,7 @@ import software.amazon.awssdk.services.s3.model.S3Object;
 
 public class FileTreeLambda implements RequestHandler<Map<String, Object>, Map<String, Object>> {
 
-    // Khởi tạo S3 Client
     private final S3Client s3Client = S3Client.builder().region(Region.US_EAST_1).build();
-    
-    // Tên Bucket lấy từ biến môi trường
     private final String TARGET_S3_BUCKET = System.getenv("SOURCE_CODE_BUCKET");
 
     @Override
@@ -27,7 +24,6 @@ public class FileTreeLambda implements RequestHandler<Map<String, Object>, Map<S
         context.getLogger().log("--- BẮT ĐẦU QUÉT CÂY THƯ MỤC TỪ S3 ---");
 
         String projectId = (String) inputEvent.get("projectId");
-        // Lấy đường dẫn thư mục code từ Output của con Lambda Import truyền sang
         String s3SourcePath = (String) inputEvent.get("s3SourcePath"); 
 
         Map<String, Object> output = new HashMap<>();
@@ -57,9 +53,7 @@ public class FileTreeLambda implements RequestHandler<Map<String, Object>, Map<S
                 ListObjectsV2Response response = s3Client.listObjectsV2(requestBuilder.build());
 
                 for (S3Object s3Object : response.contents()) {
-                    // Loại bỏ chính thư mục gốc (nếu S3 trả về node thư mục rỗng)
                     if (!s3Object.key().equals(s3SourcePath)) {
-                        // Cắt bỏ phần prefix gốc để lấy đường dẫn tương đối (Ví dụ: src/main/java/Main.java)
                         String relativePath = s3Object.key().substring(s3SourcePath.length());
                         if (relativePath.startsWith("/")) {
                             relativePath = relativePath.substring(1);
@@ -72,15 +66,16 @@ public class FileTreeLambda implements RequestHandler<Map<String, Object>, Map<S
                 continuationToken = response.nextContinuationToken();
             }
 
-            // TODO (Tùy chọn): Nếu Frontend của bạn yêu cầu cấu trúc JSON dạng cây lồng nhau (Nested JSON Tree), 
-            // bạn có thể viết thêm một hàm duyệt vòng lặp để chuyển List<String> này thành dạng Tree Node.
-            // Ở đây mình trả về dạng mảng các đường dẫn (Flat List), Frontend thường tự parse được rất dễ dàng.
+            // ==========================================
+            // THÊM MỚI: CHUYỂN ĐỔI FLAT LIST THÀNH NESTED TREE CHO FRONTEND
+            // ==========================================
+            List<Map<String, Object>> nestedTree = buildNestedTree(filePaths);
 
-            output.put("fileTree", filePaths);
+            output.put("fileTree", nestedTree);
             output.put("totalFiles", filePaths.size());
             output.put("status", "SUCCESS");
             
-            context.getLogger().log("Đã quét thành công " + filePaths.size() + " files.");
+            context.getLogger().log("Đã quét và phân giải thành công " + filePaths.size() + " files.");
             return output;
 
         } catch (Exception e) {
@@ -89,5 +84,53 @@ public class FileTreeLambda implements RequestHandler<Map<String, Object>, Map<S
             output.put("errorMessage", e.getMessage());
             return output;
         }
+    }
+
+    /**
+     * Thuật toán phân giải danh sách đường dẫn phẳng thành cấu trúc Cây lồng nhau
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> buildNestedTree(List<String> paths) {
+        List<Map<String, Object>> root = new ArrayList<>();
+        Map<String, Map<String, Object>> folderMap = new HashMap<>();
+
+        for (String path : paths) {
+            String[] parts = path.split("/");
+            String currentPath = "";
+            List<Map<String, Object>> currentLevel = root;
+
+            for (int i = 0; i < parts.length; i++) {
+                String part = parts[i];
+                currentPath = currentPath.isEmpty() ? part : currentPath + "/" + part;
+                boolean isFile = (i == parts.length - 1);
+
+                Map<String, Object> node = folderMap.get(currentPath);
+                
+                if (node == null) {
+                    node = new HashMap<>();
+                    node.put("name", part);
+                    node.put("path", currentPath);
+                    node.put("type", isFile ? "file" : "folder");
+                    
+                    if (isFile) {
+                        // Xác định ngôn ngữ để trình soạn thảo Monaco tô màu cú pháp
+                        if (part.endsWith(".java")) node.put("language", "java");
+                        else if (part.endsWith(".xml")) node.put("language", "xml");
+                        else if (part.endsWith(".json")) node.put("language", "json");
+                        else node.put("language", "plaintext");
+                    } else {
+                        node.put("children", new ArrayList<Map<String, Object>>());
+                    }
+                    
+                    currentLevel.add(node);
+                    folderMap.put(currentPath, node);
+                }
+
+                if (!isFile) {
+                    currentLevel = (List<Map<String, Object>>) node.get("children");
+                }
+            }
+        }
+        return root;
     }
 }

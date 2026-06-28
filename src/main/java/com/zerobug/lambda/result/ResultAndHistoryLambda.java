@@ -1,22 +1,31 @@
 package com.zerobug.lambda.result;
 
-import com.amazonaws.services.lambda.runtime.Context;
-import com.amazonaws.services.lambda.runtime.RequestHandler;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import com.amazonaws.services.lambda.runtime.Context;
+import com.amazonaws.services.lambda.runtime.RequestHandler;
+
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+
 public class ResultAndHistoryLambda implements RequestHandler<Map<String, Object>, Map<String, Object>> {
 
     private final S3Client s3Client = S3Client.builder().region(Region.US_EAST_1).build();
     private final String TARGET_S3_BUCKET = System.getenv("SOURCE_CODE_BUCKET");
+    
+    // THÊM BIẾN MÔI TRƯỜNG DATABASE
+    private final String DB_URL = System.getenv("DB_URL");
+    private final String DB_USER = System.getenv("DB_USER");
+    private final String DB_PASS = System.getenv("DB_PASS");
 
     @Override
     public Map<String, Object> handleRequest(Map<String, Object> inputEvent, Context context) {
@@ -36,7 +45,7 @@ public class ResultAndHistoryLambda implements RequestHandler<Map<String, Object
             // 2. Dọn dẹp mã nguồn (Lọc bỏ các câu chào hỏi thừa của AI)
             String cleanCode = extractCodeFromMarkdown(rawAiResponse);
 
-            // 3. Lưu file kết quả sạch lên S3 Bucket để Frontend có thể tải về
+            // 3. Lưu file kết quả sạch lên S3 Bucket để Frontend có thể tải về (dự phòng)
             String resultFileId = UUID.randomUUID().toString();
             String s3ResultPath = "projects/" + projectId + "/results/test_" + resultFileId + ".java";
 
@@ -49,7 +58,31 @@ public class ResultAndHistoryLambda implements RequestHandler<Map<String, Object
                 context.getLogger().log("Đã lưu kết quả Unit Test lên S3: " + s3ResultPath);
             }
 
-            // 4. Tổng hợp gói dữ liệu Lịch sử (History) trả về cho Spring Boot lưu DB
+            // ==========================================
+            // 4. LƯU LỊCH SỬ TRỰC TIẾP VÀO RDS POSTGRESQL
+            // ==========================================
+            context.getLogger().log("Tiến hành lưu History vào RDS PostgreSQL...");
+            try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
+                // LƯU Ý: Đổi tên bảng 'generation_records' cho khớp với Schema thực tế trong DB của bạn
+                String sql = "INSERT INTO generation_records (id, project_id, prompt, clean_code, target_file, model_used, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, resultFileId);
+                    // Nếu project_id trong DB của bạn là kiểu số (Integer/Long), hãy dùng Integer.parseInt(projectId)
+                    pstmt.setString(2, projectId); 
+                    pstmt.setString(3, userPrompt);
+                    pstmt.setString(4, cleanCode);
+                    pstmt.setString(5, requestedFile);
+                    pstmt.setString(6, modelId);
+                    pstmt.executeUpdate();
+                }
+                context.getLogger().log("Ghi Lịch sử vào DB thành công!");
+            } catch (Exception dbEx) {
+                context.getLogger().log("Lỗi khi ghi RDS History: " + dbEx.getMessage());
+                throw dbEx; // Báo lỗi cho Step Functions nếu rớt DB
+            }
+            // ==========================================
+
+            // 5. Tổng hợp gói dữ liệu trả về cho Step Functions
             output.put("testFileUrl", s3ResultPath);
             output.put("cleanCode", cleanCode);
             output.put("userPrompt", userPrompt);

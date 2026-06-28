@@ -7,6 +7,9 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -29,6 +32,9 @@ public class ProjectImportLambda implements RequestHandler<Map<String, Object>, 
     
     // Tên Bucket bạn sẽ tạo sau này, lấy từ biến môi trường của Lambda
     private final String TARGET_S3_BUCKET = System.getenv("SOURCE_CODE_BUCKET");
+    private final String DB_URL = System.getenv("DB_URL");
+    private final String DB_USER = System.getenv("DB_USER");
+    private final String DB_PASS = System.getenv("DB_PASS");
 
     @Override
     public Map<String, Object> handleRequest(Map<String, Object> inputEvent, Context context) {
@@ -67,7 +73,30 @@ public class ProjectImportLambda implements RequestHandler<Map<String, Object>, 
             // Xóa file rác trong /tmp để giải phóng dung lượng cho Lambda
             deleteDirectory(localTmpDir.toFile());
 
-            // 3. TRẢ KẾT QUẢ CHO STEP FUNCTIONS
+            // ==========================================
+            // 3. LƯU THÔNG TIN PROJECT VÀO RDS
+            // ==========================================
+            context.getLogger().log("Tiến hành lưu thông tin vào RDS PostgreSQL...");
+            try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
+                // LƯU Ý: Nếu tên bảng hoặc các cột trong DB của bạn khác, hãy sửa lại câu SQL này
+                String sql = "INSERT INTO projects (id, import_type, source_url, s3_source_path, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)";
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    // Chuyển UUID (String) thành kiểu UUID của PostgreSQL nếu cần, hoặc để nguyên nếu cột id là VARCHAR
+                    // Nếu cột id trong RDS là kiểu uuid, bạn dùng: pstmt.setObject(1, java.util.UUID.fromString(projectId));
+                    pstmt.setString(1, projectId);
+                    pstmt.setString(2, importType);
+                    pstmt.setString(3, sourceUrl);
+                    pstmt.setString(4, s3Prefix);
+                    pstmt.executeUpdate();
+                }
+                context.getLogger().log("Ghi dữ liệu vào RDS thành công!");
+            } catch (Exception dbEx) {
+                context.getLogger().log("Lỗi khi ghi RDS: " + dbEx.getMessage());
+                throw dbEx; // Ném lỗi ra ngoài để đánh dấu toàn bộ tiến trình này thất bại
+            }
+            // ==========================================
+
+            // 4. TRẢ KẾT QUẢ CHO STEP FUNCTIONS
             output.put("s3SourcePath", s3Prefix);
             output.put("status", "SUCCESS");
             context.getLogger().log("--- IMPORT THÀNH CÔNG ---");
@@ -102,9 +131,6 @@ public class ProjectImportLambda implements RequestHandler<Map<String, Object>, 
      * Hàm tải và giải nén file Zip
      */
     private void downloadAndExtractZip(String zipUrl, File destDir, Context context) throws Exception {
-        // Lưu ý: Nếu zipUrl là link file từ giao diện Web ném xuống, 
-        // bạn có thể dùng java.net.URL để tải về thành InputStream.
-        // Ở đây giả lập việc đọc từ InputStream của link đó:
         java.net.URL url = new java.net.URL(zipUrl);
         
         try (InputStream in = url.openStream();
